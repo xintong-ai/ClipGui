@@ -6,11 +6,40 @@
 #include "node.h"
 #include "math.h"
 #include "stdlib.h"
+#include "float.h"
+#include "algorithm"
+#include "vector"
 #define TRADITIONAL 0
+#define EPS 0.00001
 
 node *s=0, *c=0, *root=0;
 int DRAW=1, CLIP=1, pS=1, pC=1;
 Widget W[8];
+
+struct pt
+{
+    float x;
+    float y;
+ //   bool in;    //either inside or intersection point
+    float loc;
+    pt(float _x, float _y)
+    {
+        x = _x;
+        y = _y;
+        loc = -1;
+    }
+    pt()
+    {
+        loc = -1;
+    }
+};
+
+struct trgl
+{
+    //the first 3 points are the vertex
+    //others are reserved forintersection points
+    pt p[9];
+};
 
 void view_node(node *p)
 {
@@ -138,6 +167,85 @@ float dist(float x1, float y1, float x2, float y2)
   return sqrt((x1-x2)*(x1-x2) + (y1-y2)*(y1-y2));
 }
 
+
+//int I(node *p1, node *p2, node *q1, node *q2,
+//  float *alpha_p, float *alpha_q, int *xint, int *yint)
+//this has to intersect where it is not the end of the lines
+inline bool BIntersect(pt p1, pt p2, pt q1, pt q2)
+{
+  float  tp, tq, par;
+
+  par = (float) ((p2.x - p1.x)*(q2.y - q1.y) -
+                 (p2.y - p1.y)*(q2.x - q1.x));
+
+  if (!par) return 0;                               /* parallel lines */
+  tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
+  tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
+
+  //touching the boundary is not inside
+  if(tp<=0 || tp>=1 || tq<=0 || tq>=1) return 0;
+
+  return 1;
+}
+
+//touching boundary is also intersect
+inline bool BIntersectIncludeBoundary(pt p1, pt p2, pt q1, pt q2)
+{
+  float  tp, tq, par;
+
+  par = (float) ((p2.x - p1.x)*(q2.y - q1.y) -
+                 (p2.y - p1.y)*(q2.x - q1.x));
+
+  if (!par) return 0;                               /* parallel lines */
+  tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
+  tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
+
+  //touching the boundary is not inside
+  if(tp<0 || tp>1 || tq<0 || tq>1) return 0;
+
+  return 1;
+}
+
+//line(p1, p2) is parallel with line(q1, q2)
+inline bool parallel(pt p1, pt p2, pt q1, pt q2)
+{
+  float par = (float) ((p2.x - p1.x)*(q2.y - q1.y) -
+                 (p2.y - p1.y)*(q2.x - q1.x));
+  if(abs(par)<EPS)
+      return true;
+  else
+      return false;
+}
+
+inline void Intersect(pt p1, pt p2, pt q1, pt q2,
+        pt &pi, pt &qi)
+{
+    float tp, tq, par;
+
+    par = (float) ((p2.x - p1.x)*(q2.y - q1.y) -
+                   (p2.y - p1.y)*(q2.x - q1.x));
+
+    if (!par)
+        return;                               /* parallel lines */
+
+    tp = ((q1.x - p1.x)*(q2.y - q1.y) - (q1.y - p1.y)*(q2.x - q1.x))/par;
+    tq = ((p2.y - p1.y)*(q1.x - p1.x) - (p2.x - p1.x)*(q1.y - p1.y))/par;
+
+    if(tp<0 || tp>1 || tq<0 || tq>1)
+        return;
+
+//    pi.in = true;
+//    qi.in = true;
+    pi.x = p1.x + tp*(p2.x - p1.x);
+    pi.y = p1.y + tp*(p2.y - p1.y);
+    qi.x = pi.x;
+    qi.y = pi.y;
+
+    //this can be replaced with tp and tq with care
+    pi.loc = tp;// dist(p1.x, p1.y, x, y) / dist(p1.x, p1.y, p2.x, p2.y);
+    qi.loc = tq;// dist(q1.x, q1.y, x, y) / dist(q1.x, q1.y, q2.x, q2.y);
+}
+
 int I(node *p1, node *p2, node *q1, node *q2,
   float *alpha_p, float *alpha_q, int *xint, int *yint)
 {
@@ -178,6 +286,19 @@ int test(node *point, node *p)
   return type%2;
 }
 
+//assumption is the coordinates are all positive
+inline bool testInside(pt p, trgl t)
+{
+    bool inside = false;
+    pt left( -999, p.y);//create(0, point->y, 0, 0, 0, 0, 0, 0, 0, 0.);
+    for(int i = 0; i < 3; i++)
+    {
+        if(BIntersect(left, p, t.p[i], t.p[(i+1)%3]))
+            inside = !inside;
+    }
+    return inside;
+}
+
 void quit(Widget w, void *p)
 {
   deleteNode(s);
@@ -216,7 +337,6 @@ void redisplay(Widget w, int x, int y, void *p)
   if (root)
   {
         SetColor(POLY);
-
         for(poly = root; poly; poly = poly->nextPoly)
         {
            for(aux = poly; aux->next; aux = aux->next)
@@ -270,17 +390,26 @@ void add(Widget w, int which_button, int x, int y, void *data)
 
 void AddPoints()
 {
+ /*  add(NULL,1,50,50,NULL);
+    add(NULL,1,200,50,NULL);
+    add(NULL,1,120,150,NULL);
+    add(NULL,3,10,10,NULL);
 
+    add(NULL,1,50,200,NULL);
+    add(NULL,1,200,200,NULL);
+    add(NULL,1,120,50,NULL);
+    add(NULL,3,50,300,NULL);*/
+ /*
     add(NULL,1,100,100,NULL);
     add(NULL,1,200,100,NULL);
     add(NULL,1,100,200,NULL);
     add(NULL,3,10,10,NULL);
 
     add(NULL,1,150,100,NULL);
-    add(NULL,1,200,150,NULL);
+    add(NULL,1,300,150,NULL);
     add(NULL,1,50,300,NULL);
     add(NULL,3,50,300,NULL);
-
+*/
 /*
     add(NULL,1,151,52,NULL);
     add(NULL,1,102,151,NULL);
@@ -290,14 +419,42 @@ void AddPoints()
     add(NULL,1,201,102,NULL);
     add(NULL,1,152,201,NULL);
     add(NULL,1,101,103,NULL);
-    add(NULL,3,50,300,NULL);*/
+    add(NULL,3,50,300,NULL);
+    */
+
+
+
+
+
+    add(NULL,1,150,120,NULL);
+    add(NULL,1,230,50,NULL);
+    add(NULL,1,50,50,NULL);
+    add(NULL,3,10,10,NULL);
+
+
+
+
+    add(NULL,1,150,150,NULL);
+    add(NULL,1,120,20,NULL);
+    add(NULL,1,180,70,NULL);
+    add(NULL,3,50,300,NULL);
 }
 
 inline bool samePrevNext(node* nd)
 {
     return nd->prev->side == nd->next->side;
 }
+/*
+bool compareByLoc(const pt &a, const pt &b)
+{
+    return  a.in && b.in && a.loc < b.loc;
+}
 
+bool compareByIn(const pt &a, const pt &b)
+{
+    return a.in && !b.in;
+}
+*/
 //only label, not removal
 //the case of prev and next are different
 int RegularLabel(node* nd)
@@ -357,6 +514,305 @@ void labelNode(node* nd)
         else    //label opposite of neighbor
             nd->entry = (1 - RegularLabel(nd->neighbor));
     }
+}
+
+//when the loc is integer, it is the vertex,
+//otherwise it is the intersection point
+inline bool isVert(pt p)
+{
+    return (p.loc == 0 || p.loc == 1 || p.loc == 2);
+}
+/*
+inline void GetClipped1(trgl ts, trgl tc, std::vector<pt> &clipped_vert)
+{
+    //c[0], c[3], s[0], s[3]
+    //find the inside point in c
+    pt inPt;
+    for(int i = 0; i < 3; i++)
+    {
+        if(tc.p[i].in)
+        {
+            inPt = tc.p[i];
+            break;
+        }
+    }
+    //at most 4 intersection points in this case
+    std::vector<pt> vert(ts.p, ts.p + 7);
+    std::sort(vert.begin(), vert.end(), compareByIn);
+    std::sort(vert.begin(), vert.end(), compareByLoc);
+    bool prevVert = false;  //whether previous one is a vertex
+    //insert the vertex from constraint triangle after an intersection point
+    //in the subject triangle
+    for(int i = 0; i < 6; i++)
+    {
+        pt cur_Pt = vert[i];
+        bool curVert = isVert(cur_Pt);//whether current point is a vertex
+        if(cur_Pt.in )
+        {
+            //if multiple adjacent points has the same loc
+            //pick the last one
+            if((cur_Pt.loc != vert[(i + 1) % 6].loc))
+            {
+                clipped_vert.push_back(cur_Pt);
+                //make sure the current one is not vertex
+                //because we want to insert after an intersection point
+                //two inside points has to be seperated by vertex in the clipped polygon
+                if(prevVert && !curVert)
+                {
+                    clipped_vert.push_back(inPt);
+                    prevVert = false;
+                }
+            }
+        }
+        else
+            break;
+        prevVert = curVert;
+    }
+}
+
+
+inline void GetClipped0(trgl t, std::vector<pt> &clipped_vert)
+{
+    //sort the result in s
+    std::vector<pt> vert(t.p, t.p + 9);
+    //the sort can be improved
+    std::sort(vert.begin(), vert.end(), compareByIn);
+    std::sort(vert.begin(), vert.end(), compareByLoc);
+    //at most 6 vertices in the new polygon
+    for(int i = 0; i < 6; i++)
+    {
+        if(vert[i].in)
+        {
+            if(vert[i].loc != vert[(i + 1) % 6].loc)
+                clipped_vert.push_back(vert[i]);
+        }
+        else
+            break;
+    }
+}
+*/
+inline void AddIntersection(trgl ts, trgl tc, pt *clipped_array, int &clipped_cnt)
+{
+    for(int ic = 0; ic < 3; ic++)
+    {
+        for(int is = 0; is < 3; is++)
+        {
+            pt insect_s, insect_c;
+            Intersect(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
+                    insect_c, insect_s);
+
+            if(insect_c.loc >= 0)
+            {
+                insect_c.loc += ic;
+                if(clipped_cnt > 0)
+                {
+                    if(insect_c.loc > clipped_array[clipped_cnt - 1].loc)
+                        clipped_array[clipped_cnt++] = insect_c;
+                    else if(insect_c.loc < clipped_array[clipped_cnt - 1].loc)
+                    {
+                        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+                        clipped_array[clipped_cnt - 1] = insect_c;
+                        clipped_cnt++;
+                    }
+                    //else :insect_c.loc == clipped_vert[isect_cnt - 1].loc
+                    //don't add anything
+                }
+                else
+                {
+                    clipped_array[0] = insect_c;
+                    clipped_cnt++;
+                }
+            }
+        }
+    }
+}
+
+inline void swap(pt &p1, pt &p2)
+{
+    pt tmp;
+    tmp = p1;
+    p1 = p2;
+    p2 = tmp;
+}
+
+void ClipTriangle(Widget w, void *p)
+{
+    AddPoints();
+    trgl ts, tc;
+    int i = 0;
+    for(node* auxs = s; auxs; auxs = auxs->next , i++)
+    {
+        ts.p[i].x = auxs->x;
+        ts.p[i].y = auxs->y;
+    }
+    i = 0;
+    for(node* auxc = c; auxc; auxc = auxc->next , i++)
+    {
+        tc.p[i].x = auxc->x;
+        tc.p[i].y = auxc->y;
+    }
+    //mark inside or outside for the triangle vertices
+    //and count the number of inside vertices
+    int cnt_in_s = 0, cnt_in_c = 0;
+//    pt inPtS[2];
+//    pt inPtC[2];
+    for(i = 0; i < 3; i++)
+    {
+ //       tc.p[i].loc = i;
+        if(tc.p[i].loc = testInside(tc.p[i], ts))
+        {
+//            inPtC[cnt_in_c++] = tc.p[i];
+           cnt_in_c++;
+        }
+
+ //       ts.p[i].loc = i;
+        if(ts.p[i].loc = testInside(ts.p[i], tc))
+        {
+//            inPtS[cnt_in_s++] = ts.p[i];
+            cnt_in_s++;
+        }
+
+    }
+
+    //make the "in" vertices in the front of the array
+    int a[3] = {0, 1, 0};
+    for(i = 0; i < 3; i++)
+    {
+        int idx = a[i];
+        if(!tc.p[idx].loc && tc.p[idx + 1].loc)
+            swap(tc.p[idx], tc.p[idx + 1]);
+        if(!ts.p[idx].loc && ts.p[idx + 1].loc)
+            swap(ts.p[idx], ts.p[idx + 1]);
+    }
+    //compute intersection point
+
+ //   std::vector<pt> clipped_vert;
+    pt clipped_array[6];
+
+/*
+    int cnt = 0;//count of intersection points
+    for(int ic = 0; ic < 3; ic++)
+        for(int is = 0; is < 3; is++)
+        {
+            pt insect_s, insect_c;
+            Intersect(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
+                    insect_c, insect_s);
+            if(insect_c.in)
+            {
+                int i = cnt + 3;
+                tc.p[i] = insect_c;
+                ts.p[i] = insect_s;
+                tc.p[i].loc += ic;
+                ts.p[i].loc += is;
+                if(tc.p[i].loc == 3)
+                    tc.p[i].loc = 0;
+                if(ts.p[i].loc == 3)
+                    ts.p[i].loc = 0;
+                cnt++;
+            }
+        }
+*/
+    int clipped_cnt = 0;
+    if(0 == cnt_in_c && 0 == cnt_in_s)
+    {
+     //   GetClipped0(ts, clipped_vert);
+
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+    }
+    else if(0 == cnt_in_c && 1 == cnt_in_s)
+    {
+        AddIntersection(tc, ts, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt++] = ts.p[0];
+    }
+    else if(1 == cnt_in_c && 0 == cnt_in_s)
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt++] = tc.p[0];
+    }
+    else if(2 == cnt_in_c && 0 == cnt_in_s)
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt++] = tc.p[0];
+        clipped_array[clipped_cnt++] = tc.p[1];
+    }
+    else if(0 == cnt_in_c && 2 == cnt_in_s)
+    {
+        AddIntersection(tc, ts, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt++] = ts.p[0];
+        clipped_array[clipped_cnt++] = ts.p[1];
+    }
+    else if(2 == cnt_in_c && 1 == cnt_in_s)
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+        clipped_array[clipped_cnt - 1] = ts.p[0];
+        clipped_cnt++;
+        clipped_array[clipped_cnt++] = tc.p[0];
+        clipped_array[clipped_cnt++] = tc.p[1];
+    }
+    else if(1 == cnt_in_c && 2 == cnt_in_s)
+    {
+        AddIntersection(tc, ts, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+        clipped_array[clipped_cnt - 1] = tc.p[0];
+        clipped_cnt++;
+        clipped_array[clipped_cnt++] = ts.p[0];
+        clipped_array[clipped_cnt++] = ts.p[1];
+    }
+    else if(1 == cnt_in_c && 1 == cnt_in_s
+            && BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]))
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        if(parallel(clipped_array[0], ts.p[2], ts.p[1], clipped_array[0]))
+        {
+            clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+            clipped_array[clipped_cnt - 1] = ts.p[0];
+            clipped_cnt++;
+            clipped_array[clipped_cnt++] = tc.p[0];
+        }
+        else
+        {
+            for(int j = clipped_cnt - 1; j > 0; j--)
+            {
+                clipped_array[j + 1] = clipped_array[j];
+            }
+            clipped_array[1] = ts.p[0];
+            clipped_cnt++;
+            clipped_array[clipped_cnt++] = tc.p[0];
+        }
+    }
+    else//(1 == cnt_in_c && 1 == cnt_in_s
+     //   && !BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]))
+    {
+        AddIntersection(ts, tc, clipped_array, clipped_cnt);
+        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
+        clipped_array[clipped_cnt - 1] = ts.p[0];
+        clipped_cnt++;
+        clipped_array[clipped_cnt++] = tc.p[0];
+    }
+
+
+//    else if(0 == cnt_in_s)
+//    {
+//        GetClipped0(tc, clipped_vert);
+//    }
+//    else if(1 == cnt_in_c)  //sort s, and insert the one from c
+//    {
+//        GetClipped1(ts, tc, clipped_vert);
+//    }
+//    else// if(1 == cnt_in_s)
+//    {
+//        GetClipped1(tc, ts, clipped_vert);
+//    }
+
+    for(int i = 0; i < clipped_cnt; i++)
+    {
+        node* newNode = create(clipped_array[i].x, clipped_array[i].y, root, 0, 0, 0, 0, 0, 0, 0.);
+        root = newNode;
+    }
+
+    redisplay(W[3], X, Y, NULL);
+    CLIP=0;
 }
 
 void clip(Widget w, void *p)
@@ -552,7 +1008,7 @@ void display(int argc, char **argv)
   if (OpenDisplay(argc, argv) == FALSE) return;
 
   W[0] = MakeMenu("Func");
-  W[1] = MakeButton("Clip", clip, NULL);
+  W[1] = MakeButton("Clip", ClipTriangle, NULL);
   W[2] = MakeButton("Quit", quit, NULL);
   W[3] = MakeDrawArea(X, Y, redisplay, NULL);
   W[4] = MakeMenuItem(W[0], "A&B ", (ButtonCB) set, (void*)"A");
