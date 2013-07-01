@@ -635,9 +635,69 @@ inline void swap(pt &p1, pt &p2)
     p2 = tmp;
 }
 
+
+struct instructSet
+{
+    bool doIns[12];
+    instructSet()
+    {
+        for(int i = 0; i < 12; i++)
+            doIns[i] = false;
+    }
+};
+static instructSet stateSet[11];
+
+void setStateInstr()
+{
+    stateSet[0].doIns[1] = true;
+
+    stateSet[1].doIns[0] = true;
+    stateSet[1].doIns[4] = true;
+
+    stateSet[2].doIns[1] = true;
+    stateSet[2].doIns[5] = true;
+
+    stateSet[3].doIns[0] = true;
+    stateSet[3].doIns[4] = true;
+    stateSet[3].doIns[6] = true;
+
+    stateSet[4].doIns[1] = true;
+    stateSet[4].doIns[5] = true;
+    stateSet[4].doIns[7] = true;
+
+    stateSet[5].doIns[4] = true;
+    stateSet[5].doIns[6] = true;
+    stateSet[5].doIns[8] = true;
+
+    stateSet[6].doIns[5] = true;
+    stateSet[6].doIns[7] = true;
+    stateSet[6].doIns[9] = true;
+
+    stateSet[7].doIns[0] = true;
+    stateSet[7].doIns[2] = true;
+    stateSet[7].doIns[4] = true;
+    stateSet[7].doIns[6] = true;
+
+    stateSet[8].doIns[1] = true;
+    stateSet[8].doIns[3] = true;
+    stateSet[8].doIns[5] = true;
+    stateSet[8].doIns[7] = true;
+
+    stateSet[9].doIns[1] = true;
+    stateSet[9].doIns[5] = true;
+    stateSet[9].doIns[10] = true;
+    stateSet[9].doIns[11] = true;
+
+    stateSet[10].doIns[1] = true;
+    stateSet[10].doIns[3] = true;
+    stateSet[10].doIns[5] = true;
+}
+
+
 void ClipTriangle(Widget w, void *p)
 {
     AddPoints();
+
     trgl ts, tc;
     int i = 0;
     for(node* auxs = s; auxs; auxs = auxs->next , i++)
@@ -653,25 +713,19 @@ void ClipTriangle(Widget w, void *p)
     }
     //mark inside or outside for the triangle vertices
     //and count the number of inside vertices
+    setStateInstr();
+
+    i = 0;
+    //mark inside or outside for the triangle vertices
+    //and count the number of inside vertices
     int cnt_in_s = 0, cnt_in_c = 0;
-//    pt inPtS[2];
-//    pt inPtC[2];
     for(i = 0; i < 3; i++)
     {
- //       tc.p[i].loc = i;
         if(tc.p[i].loc = testInside(tc.p[i], ts))
-        {
-//            inPtC[cnt_in_c++] = tc.p[i];
            cnt_in_c++;
-        }
 
- //       ts.p[i].loc = i;
         if(ts.p[i].loc = testInside(ts.p[i], tc))
-        {
-//            inPtS[cnt_in_s++] = ts.p[i];
             cnt_in_s++;
-        }
-
     }
 
     //make the "in" vertices in the front of the array
@@ -684,126 +738,76 @@ void ClipTriangle(Widget w, void *p)
         if(!ts.p[idx].loc && ts.p[idx + 1].loc)
             swap(ts.p[idx], ts.p[idx + 1]);
     }
-    //compute intersection point
 
- //   std::vector<pt> clipped_vert;
+    bool test;
+    if(1 == cnt_in_c && 1 == cnt_in_s)
+    {
+      //  test1 = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]);
+        //if(test1)
+        test = BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[0], tc.p[1]);
+    }
+
+    int state = -1;
+    if(0 == cnt_in_c && 0 == cnt_in_s)
+        state = 0;
+    else if(0 == cnt_in_c && 1 == cnt_in_s)
+        state = 1;
+    else if(1 == cnt_in_c && 0 == cnt_in_s)
+        state = 2;
+    else if(0 == cnt_in_c && 2 == cnt_in_s)
+        state = 3;
+    else if(2 == cnt_in_c && 0 == cnt_in_s)
+        state = 4;
+    else if(0 == cnt_in_c && 3 == cnt_in_s)
+        state = 5;
+    else if(3 == cnt_in_c && 0 == cnt_in_s)
+        state = 6;
+    else if(1 == cnt_in_c && 2 == cnt_in_s)
+        state = 7;
+    else if(2 == cnt_in_c && 1 == cnt_in_s)
+        state = 8;
+    else if(1 == cnt_in_c && 1 == cnt_in_s && !test)
+        state = 9;
+    else// if(1 == cnt_in_c && 1 == cnt_in_s && !test1) and (1 == cnt_in_c && 1 == cnt_in_s && test1 && test2)
+        state = 10;
+    //+cs
+
     pt clipped_array[6];
 
-/*
-    int cnt = 0;//count of intersection points
-    for(int ic = 0; ic < 3; ic++)
-        for(int is = 0; is < 3; is++)
-        {
-            pt insect_s, insect_c;
-            Intersect(tc.p[ic], tc.p[(ic+1)%3], ts.p[is], ts.p[(is+1)%3 ],
-                    insect_c, insect_s);
-            if(insect_c.in)
-            {
-                int i = cnt + 3;
-                tc.p[i] = insect_c;
-                ts.p[i] = insect_s;
-                tc.p[i].loc += ic;
-                ts.p[i].loc += is;
-                if(tc.p[i].loc == 3)
-                    tc.p[i].loc = 0;
-                if(ts.p[i].loc == 3)
-                    ts.p[i].loc = 0;
-                cnt++;
-            }
-        }
-*/
     int clipped_cnt = 0;
-    if(0 == cnt_in_c && 0 == cnt_in_s)
-    {
-     //   GetClipped0(ts, clipped_vert);
-
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
-    }
-    else if(0 == cnt_in_c && 1 == cnt_in_s)
-    {
+    instructSet is = stateSet[state];
+    if(is.doIns[0])//+sc
         AddIntersection(tc, ts, clipped_array, clipped_cnt);
-        clipped_array[clipped_cnt++] = ts.p[0];
-    }
-    else if(1 == cnt_in_c && 0 == cnt_in_s)
-    {
+    if(is.doIns[1])//+cs
         AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        clipped_array[clipped_cnt++] = tc.p[0];
-    }
-    else if(2 == cnt_in_c && 0 == cnt_in_s)
+    if(is.doIns[2])//+c0-
     {
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        clipped_array[clipped_cnt++] = tc.p[0];
-        clipped_array[clipped_cnt++] = tc.p[1];
-    }
-    else if(0 == cnt_in_c && 2 == cnt_in_s)
-    {
-        AddIntersection(tc, ts, clipped_array, clipped_cnt);
-        clipped_array[clipped_cnt++] = ts.p[0];
-        clipped_array[clipped_cnt++] = ts.p[1];
-    }
-    else if(2 == cnt_in_c && 1 == cnt_in_s)
-    {
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
-        clipped_array[clipped_cnt - 1] = ts.p[0];
-        clipped_cnt++;
-        clipped_array[clipped_cnt++] = tc.p[0];
-        clipped_array[clipped_cnt++] = tc.p[1];
-    }
-    else if(1 == cnt_in_c && 2 == cnt_in_s)
-    {
-        AddIntersection(tc, ts, clipped_array, clipped_cnt);
         clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
         clipped_array[clipped_cnt - 1] = tc.p[0];
         clipped_cnt++;
-        clipped_array[clipped_cnt++] = ts.p[0];
-        clipped_array[clipped_cnt++] = ts.p[1];
     }
-    else if(1 == cnt_in_c && 1 == cnt_in_s
-            && BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]))
+    if(is.doIns[3])//+s0-
     {
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
-        if(parallel(clipped_array[0], ts.p[2], ts.p[1], clipped_array[0]))
-        {
-            clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
-            clipped_array[clipped_cnt - 1] = ts.p[0];
-            clipped_cnt++;
-            clipped_array[clipped_cnt++] = tc.p[0];
-        }
-        else
-        {
-            for(int j = clipped_cnt - 1; j > 0; j--)
-            {
-                clipped_array[j + 1] = clipped_array[j];
-            }
-            clipped_array[1] = ts.p[0];
-            clipped_cnt++;
-            clipped_array[clipped_cnt++] = tc.p[0];
-        }
-    }
-    else//(1 == cnt_in_c && 1 == cnt_in_s
-     //   && !BIntersectIncludeBoundary(ts.p[1], ts.p[2], tc.p[1], tc.p[2]))
-    {
-        AddIntersection(ts, tc, clipped_array, clipped_cnt);
         clipped_array[clipped_cnt] = clipped_array[clipped_cnt - 1];
         clipped_array[clipped_cnt - 1] = ts.p[0];
         clipped_cnt++;
-        clipped_array[clipped_cnt++] = tc.p[0];
     }
-
-
-//    else if(0 == cnt_in_s)
-//    {
-//        GetClipped0(tc, clipped_vert);
-//    }
-//    else if(1 == cnt_in_c)  //sort s, and insert the one from c
-//    {
-//        GetClipped1(ts, tc, clipped_vert);
-//    }
-//    else// if(1 == cnt_in_s)
-//    {
-//        GetClipped1(tc, ts, clipped_vert);
-//    }
+    if(is.doIns[4])//+s0
+        clipped_array[clipped_cnt++] = ts.p[0];
+    if(is.doIns[5])//+c0
+        clipped_array[clipped_cnt++] = tc.p[0];
+    if(is.doIns[6])//+s1
+        clipped_array[clipped_cnt++] = ts.p[1];
+    if(is.doIns[7])//+c1
+        clipped_array[clipped_cnt++] = tc.p[1];
+    if(is.doIns[8])//+s2
+        clipped_array[clipped_cnt++] = ts.p[2];
+    if(is.doIns[9])//+c2
+        clipped_array[clipped_cnt++] = tc.p[2];
+    if(is.doIns[10])//+r0
+        clipped_array[clipped_cnt++] = clipped_array[0];
+    if(is.doIns[11])//+r0_s0
+        clipped_array[0] = ts.p[0];
 
     for(int i = 0; i < clipped_cnt; i++)
     {
